@@ -54,31 +54,110 @@ def train():
                 train_loss += loss.item()
             scheduler.step()
 
-            # --- Validation ---
-            model.eval()
-            all_preds, all_labels = [], []
-            with torch.no_grad():
-                for imgs, labels in val_loader:
-                    imgs    = imgs.to(DEVICE)
-                    outputs = torch.sigmoid(model(imgs)).cpu().numpy()
-                    all_preds.extend(outputs.flatten())
-                    all_labels.extend(labels.numpy())
+             # --- Test set evaluation ---
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from sklearn.metrics import (
+            confusion_matrix, classification_report,
+            precision_score, recall_score, f1_score, roc_auc_score
+        )
+        import os
 
-            auc          = roc_auc_score(all_labels, all_preds)
-            preds_binary = [1 if p > 0.5 else 0 for p in all_preds]
-            acc          = sum(p == l for p, l in zip(preds_binary, all_labels)) / len(all_labels)
-            avg_loss     = train_loss / len(train_loader)
+        test_set    = DeepfakeDataset(split="test")
+        test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
-            print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {avg_loss:.4f} | AUC: {auc:.4f} | Acc: {acc:.4f}")
-            mlflow.log_metrics({
-                "train_loss": avg_loss,
-                "val_auc":    auc,
-                "val_acc":    acc
-            }, step=epoch)
+        # Check class balance and log it
+        from collections import Counter
+        label_counts = Counter(test_set.dataset.targets)
+        # ImageFolder: fake=0, real=1 (alphabetical)
+        print(f"\nTest set class balance:")
+        print(f"  Fake (0): {label_counts[0]} images")
+        print(f"  Real (1): {label_counts[1]} images")
+        mlflow.log_params({
+            "test_fake_count": label_counts[0],
+            "test_real_count": label_counts[1]
+        })
+
+        model.eval()
+        test_preds, test_labels = [], []
+        with torch.no_grad():
+            for imgs, labels in test_loader:
+                imgs    = imgs.to(DEVICE)
+                outputs = torch.sigmoid(model(imgs)).cpu().numpy()
+                test_preds.extend(outputs.flatten())
+                test_labels.extend(labels.numpy())
+
+        test_binary = [1 if p > 0.5 else 0 for p in test_preds]
+        test_labels_int = [int(l) for l in test_labels]
+
+        # Core metrics
+        test_auc       = roc_auc_score(test_labels_int, test_preds)
+        test_acc       = sum(p == l for p, l in zip(test_binary, test_labels_int)) / len(test_labels_int)
+
+        # Per-class metrics — zero_division=0 avoids warnings if a class is missing
+        precision_fake = precision_score(test_labels_int, test_binary, pos_label=0, zero_division=0)
+        recall_fake    = recall_score(test_labels_int, test_binary, pos_label=0, zero_division=0)
+        f1_fake        = f1_score(test_labels_int, test_binary, pos_label=0, zero_division=0)
+
+        precision_real = precision_score(test_labels_int, test_binary, pos_label=1, zero_division=0)
+        recall_real    = recall_score(test_labels_int, test_binary, pos_label=1, zero_division=0)
+        f1_real        = f1_score(test_labels_int, test_binary, pos_label=1, zero_division=0)
+
+        print(f"\nTest Results:")
+        print(f"  AUC:           {test_auc:.4f}")
+        print(f"  Accuracy:      {test_acc:.4f}")
+        print(f"  Fake — Precision: {precision_fake:.4f} | Recall: {recall_fake:.4f} | F1: {f1_fake:.4f}")
+        print(f"  Real — Precision: {precision_real:.4f} | Recall: {recall_real:.4f} | F1: {f1_real:.4f}")
+
+        # Full classification report
+        report = classification_report(
+            test_labels_int, test_binary,
+            target_names=["fake", "real"]
+        )
+        print(f"\nClassification Report:\n{report}")
+
+        # Log all metrics to MLflow
+        mlflow.log_metrics({
+            "test_auc":        test_auc,
+            "test_acc":        test_acc,
+            "fake_precision":  precision_fake,
+            "fake_recall":     recall_fake,
+            "fake_f1":         f1_fake,
+            "real_precision":  precision_real,
+            "real_recall":     recall_real,
+            "real_f1":         f1_real,
+        })
+
+        # Save classification report as text artifact
+        os.makedirs("outputs", exist_ok=True)
+        with open("outputs/classification_report.txt", "w") as f:
+            f.write(f"AUC: {test_auc:.4f}\n")
+            f.write(f"Accuracy: {test_acc:.4f}\n\n")
+            f.write(report)
+        mlflow.log_artifact("outputs/classification_report.txt")
+
+        # Confusion matrix
+        cm  = confusion_matrix(test_labels_int, test_binary)
+        fig, ax = plt.subplots(figsize=(5, 4))
+        sns.heatmap(
+            cm, annot=True, fmt="d", cmap="Blues",
+            xticklabels=["fake", "real"],
+            yticklabels=["fake", "real"],
+            ax=ax
+        )
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
+        ax.set_title(f"Confusion Matrix — AUC: {test_auc:.4f}")
+        fig.tight_layout()
+        fig.savefig("outputs/confusion_matrix.png")
+        mlflow.log_artifact("outputs/confusion_matrix.png")
+        plt.close()
+        print("Artifacts saved to outputs/")
 
         torch.save(model.state_dict(), "model.pt")
+        mlflow.log_artifact("model.pt")
         mlflow.pytorch.log_model(model, "model")
-        print("\nTraining complete. model.pt saved.")
+        print("model.pt saved and logged to MLflow.")
 
 if __name__ == "__main__":
     train() 
