@@ -5,7 +5,7 @@ import requests
 from PIL import Image
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://localhost:8000/predict")
+API_URL = os.getenv("API_URL",  "http://api:8000/predict")
 
 st.set_page_config(page_title="Deepfake Detector", layout="centered")
 st.title("Deepfake Face Detector")

@@ -9,3 +9,5 @@ mlruns/
 outputs/
 
 outputs/
+
+.dockerignore
