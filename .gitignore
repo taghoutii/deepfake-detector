@@ -11,3 +11,5 @@ outputs/
 outputs/
 
 .dockerignore
+
+mlflow.db
