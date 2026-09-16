@@ -34,6 +34,9 @@ if uploaded:
         except requests.exceptions.ConnectionError:
             st.error("Cannot connect to the API. Make sure uvicorn is running on port 8000.")
             st.stop()
+        except requests.exceptions.ReadTimeout:
+            st.error("The API took too long to respond. Please try again.")
+            st.stop()
 
     if response.status_code == 200:
         result      = response.json()

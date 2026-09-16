@@ -43,3 +43,18 @@ def test_predict_missing_file():
     # Send request with no file
     response = client.post("/predict")
     assert response.status_code == 422   # FastAPI validation error
+
+def test_predict_corrupted_image_with_valid_content_type():
+    # Valid JPEG bytes truncated to corrupt the file, but the content-type
+    # header still claims image/jpeg — this used to raise an uncaught OSError
+    # (500) instead of a clean 400.
+    img = Image.new("RGB", (224, 224), color=(10, 20, 30))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    corrupted = buf.getvalue()[: len(buf.getvalue()) // 3]
+
+    response = client.post(
+        "/predict",
+        files={"file": ("corrupt.jpg", corrupted, "image/jpeg")}
+    )
+    assert response.status_code == 400

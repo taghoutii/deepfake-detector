@@ -1,10 +1,9 @@
+import copy
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import mlflow
 import mlflow.pytorch
-from sklearn.metrics import roc_auc_score, confusion_matrix
-import numpy as np
 from src.model import build_model
 from src.dataset import DeepfakeDataset
 
@@ -12,6 +11,23 @@ EPOCHS     = 8
 BATCH_SIZE = 32
 LR         = 1e-4
 DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
+
+def evaluate(model, loader, criterion, device):
+    model.eval()
+    total_loss = 0.0
+    correct    = 0
+    total      = 0
+    with torch.no_grad():
+        for imgs, labels in loader:
+            imgs    = imgs.to(device)
+            labels  = labels.to(device).unsqueeze(1)
+            outputs = model(imgs)
+            loss    = criterion(outputs, labels)
+            total_loss += loss.item() * imgs.size(0)
+            preds = (torch.sigmoid(outputs) > 0.5).float()
+            correct += (preds == labels).sum().item()
+            total   += imgs.size(0)
+    return total_loss / total, correct / total
 
 def train():
     print(f"Using device: {DEVICE}")
@@ -39,6 +55,10 @@ def train():
             "train_size": len(train_set), "val_size": len(val_set)
         })
 
+        best_val_loss   = float("inf")
+        best_state_dict = None
+        best_epoch      = -1
+
         for epoch in range(EPOCHS):
             # --- Training ---
             model.train()
@@ -51,8 +71,34 @@ def train():
                 loss    = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                train_loss += loss.item()
+                train_loss += loss.item() * imgs.size(0)
             scheduler.step()
+
+            avg_train_loss    = train_loss / len(train_set)
+            val_loss, val_acc = evaluate(model, val_loader, criterion, DEVICE)
+
+            print(
+                f"Epoch {epoch + 1}/{EPOCHS} | "
+                f"Train Loss: {avg_train_loss:.4f} | "
+                f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}"
+            )
+
+            mlflow.log_metrics({
+                "train_loss": avg_train_loss,
+                "val_loss":   val_loss,
+                "val_acc":    val_acc,
+            }, step=epoch)
+
+            if val_loss < best_val_loss:
+                best_val_loss   = val_loss
+                best_epoch      = epoch
+                best_state_dict = copy.deepcopy(model.state_dict())
+
+        # Use the best validation checkpoint (not just the last epoch) going forward
+        if best_state_dict is not None:
+            model.load_state_dict(best_state_dict)
+            print(f"Loaded best model from epoch {best_epoch + 1} (val_loss={best_val_loss:.4f})")
+            mlflow.log_params({"best_epoch": best_epoch + 1, "best_val_loss": best_val_loss})
 
              # --- Test set evaluation ---
         import matplotlib.pyplot as plt

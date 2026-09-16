@@ -1,9 +1,12 @@
+import os
 import torch
 from torch.utils.data import Dataset
 from torchvision import datasets
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import numpy as np
+
+DATA_PROCESSED_DIR = os.getenv("DATA_PROCESSED_DIR", "data/processed")
 
 def get_transforms(split="train"):
     if split == "train":
@@ -23,8 +26,8 @@ def get_transforms(split="train"):
 
 class DeepfakeDataset(Dataset):
     def __init__(self, split="train"):
-        # Always reads from data/processed — never from raw
-        self.dataset = datasets.ImageFolder(root=f"data/processed/{split}")
+        # Always reads from DATA_PROCESSED_DIR — never from raw
+        self.dataset = datasets.ImageFolder(root=f"{DATA_PROCESSED_DIR}/{split}")
         self.transform = get_transforms(split)
         self.classes = self.dataset.classes  # ['fake', 'real'] — alphabetical
 

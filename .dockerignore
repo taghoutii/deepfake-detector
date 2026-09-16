@@ -1,0 +1,10 @@
+﻿.venv/
+venv/
+data/
+mlruns/
+outputs/
+.git/
+__pycache__/
+*.pyc
+notebooks/
+model.pt

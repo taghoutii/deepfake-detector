@@ -4,8 +4,8 @@ import random
 from pathlib import Path
 
 # ── Config ──────────────────────────────────────────────────────────────────
-RAW_DIR       = Path("data/raw/real_vs_fake/real_vs_fake")
-PROCESSED_DIR = Path("data/processed")
+RAW_DIR       = Path(os.getenv("DATA_RAW_DIR", "data/raw/real_vs_fake/real_vs_fake"))
+PROCESSED_DIR = Path(os.getenv("DATA_PROCESSED_DIR", "data/processed"))
 
 SAMPLE_SIZES = {
     "train": 4000,   # per class → 8000 total

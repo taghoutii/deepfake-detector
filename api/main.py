@@ -1,4 +1,5 @@
 import io
+import os
 import base64
 import torch
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -17,11 +18,13 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE          = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_PATH      = os.getenv("MODEL_PATH", "model.pt")
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", 10 * 1024 * 1024))  # 10 MB
 
 # Load model once at startup — not on every request
 model = build_model(pretrained=False)
-model.load_state_dict(torch.load("model.pt", map_location=DEVICE))
+model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.eval().to(DEVICE)
 
 TRANSFORM = transforms.Compose([
@@ -34,6 +37,22 @@ TRANSFORM = transforms.Compose([
 def health():
     return {"status": "ok", "device": DEVICE}
 
+async def _read_limited(file: UploadFile, max_bytes: int) -> bytes:
+    chunks = []
+    total  = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max size is {max_bytes // (1024 * 1024)}MB."
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     # Validate file type
@@ -43,10 +62,11 @@ async def predict(file: UploadFile = File(...)):
             detail="Invalid file type. Please upload a JPEG or PNG image."
         )
 
+    contents = await _read_limited(file, MAX_UPLOAD_BYTES)
+
     try:
-        contents = await file.read()
-        img      = Image.open(io.BytesIO(contents)).convert("RGB")
-    except UnidentifiedImageError:
+        img = Image.open(io.BytesIO(contents)).convert("RGB")
+    except (UnidentifiedImageError, OSError):
         raise HTTPException(status_code=400, detail="Could not read image file.")
 
     tensor = TRANSFORM(img).unsqueeze(0).to(DEVICE)

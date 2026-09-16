@@ -22,13 +22,21 @@ User → Streamlit (port 8501) → FastAPI (port 8000) → EfficientNet-B0 → p
 
 ## Quick start
 
+The trained model (`model.pt`) is stored with [Git LFS](https://git-lfs.com), so install
+it once before cloning:
+
 ```bash
+git lfs install
 git clone https://github.com/taghoutii/deepfake-detector
 cd deepfake-detector
 docker-compose up
 ```
 
 Then open http://localhost:8501
+
+> If you clone without Git LFS installed, `model.pt` will be a small text pointer
+> file instead of the real weights, and the API container will fail to load it.
+> Run `git lfs pull` after installing Git LFS to fix an existing clone.
 
 ## Stack
 

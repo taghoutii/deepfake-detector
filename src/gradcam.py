@@ -39,7 +39,7 @@ def get_gradcam_image(model, pil_image: Image.Image, device: str) -> Image.Image
     is_fake = prob < 0.5
     targets = [BinaryOutputTarget(is_fake)]
 
-    cam           = GradCAM(model=model, target_layers=target_layers)
-    grayscale_cam = cam(input_tensor=tensor, targets=targets)[0]
+    with GradCAM(model=model, target_layers=target_layers) as cam:
+        grayscale_cam = cam(input_tensor=tensor, targets=targets)[0]
     visualization = show_cam_on_image(img_array, grayscale_cam, use_rgb=True)
     return Image.fromarray(visualization)
