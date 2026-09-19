@@ -1,4 +1,7 @@
 import copy
+import os
+import sys
+import requests
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -11,6 +14,28 @@ EPOCHS     = 8
 BATCH_SIZE = 32
 LR         = 1e-4
 DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Always log to the MLflow server (docker-compose `mlflow` service) so the UI at
+# localhost:5000 sees every run. Inside the compose network use http://mlflow:5000.
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+
+def setup_mlflow():
+    if MLFLOW_TRACKING_URI.startswith(("http://", "https://")):
+        try:
+            requests.get(f"{MLFLOW_TRACKING_URI}/health", timeout=5).raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise SystemExit(
+                f"MLflow server not reachable at {MLFLOW_TRACKING_URI} ({e}).\n"
+                "Start it with: docker-compose up -d mlflow\n"
+                "or point MLFLOW_TRACKING_URI at a different server."
+            )
+    # MLflow prints an emoji run-URL line when logging to a server; on Windows that
+    # raises UnicodeEncodeError if stdout is redirected (cp1252). Replace instead.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    print(f"MLflow tracking URI: {MLFLOW_TRACKING_URI}")
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -31,6 +56,7 @@ def evaluate(model, loader, criterion, device):
 
 def train():
     print(f"Using device: {DEVICE}")
+    setup_mlflow()
 
     # No path argument needed — dataset.py handles it
     train_set = DeepfakeDataset(split="train")
@@ -107,9 +133,8 @@ def train():
             confusion_matrix, classification_report,
             precision_score, recall_score, f1_score, roc_auc_score
         )
-        import os
 
-        test_set    = DeepfakeDataset(split="test")
+        test_set   = DeepfakeDataset(split="test")
         test_loader = DataLoader(test_set, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
         # Check class balance and log it

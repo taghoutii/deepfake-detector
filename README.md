@@ -38,6 +38,23 @@ Then open http://localhost:8501
 > file instead of the real weights, and the API container will fail to load it.
 > Run `git lfs pull` after installing Git LFS to fix an existing clone.
 
+## Experiment tracking (MLflow)
+
+All training runs are logged to the MLflow server started by docker-compose, so the
+UI at http://localhost:5000 always shows every run, whether you train locally or in Docker.
+
+```bash
+docker-compose up -d mlflow        # start the tracking server first
+python -m src.preprocessing        # run from the repo root (note: -m, not src/x.py)
+python -m src.train                # logs to http://localhost:5000
+```
+
+- `src/train.py` exits with a clear message if the server isn't reachable.
+- Override the server with `MLFLOW_TRACKING_URI` (use `http://mlflow:5000` from inside
+  the compose network).
+- Run metadata lives in the `deepfake-detector-mlflow-db` Docker volume; artifacts are
+  written to `./mlruns` on the host.
+
 ## Stack
 
 | Component       | Tool                        |
