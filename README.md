@@ -55,6 +55,30 @@ python -m src.train                # logs to http://localhost:5000
 - Run metadata lives in the `deepfake-detector-mlflow-db` Docker volume; artifacts are
   written to `./mlruns` on the host.
 
+## Web UI
+
+A single-page Streamlit flow: upload an image, it is analysed, and the result appears as one report card.
+The card shows a verdict (LIKELY SYNTHETIC, LIKELY AUTHENTIC, or INCONCLUSIVE below 70% confidence), the
+confidence score, a short reasoning line and named signal rows (Grad-CAM attention region, file metadata
+finding, model scope), next to the Grad-CAM heatmap with an opacity slider. The round-trip analysis time
+and a separate file-metadata card are shown too. Nothing persists between analyses: a new upload replaces
+the result, and removing the file clears it.
+
+- One light theme (`streamlit_app/theme.py`, palette values in `PALETTE`); blue marks controls and section
+  headers, and the verdict colours are reserved for verdict states. All text uses a sans-serif stack.
+- The attention-region row is derived in the frontend from the overlay the API already returns; it
+  describes where the model looked, not evidence of manipulation. File metadata is a supplementary
+  signal only: the model does not use it and it can be stripped or forged.
+- Images are analysed by the model in your own API container (no third-party AI service) and are held in
+  session memory only; nothing is written to disk. `.streamlit/config.toml` sets
+  `browser.gatherUsageStats = false`, and a browser session (page load, analysis, upload) was measured
+  making no requests to external hosts. Re-check this if you change the Streamlit config or add web
+  fonts/analytics. This describes the app, not your deployment: if you host it, whoever runs the server can
+  see uploads.
+- The custom CSS targets Streamlit's internal markup. It was checked on Streamlit 1.39 (the Docker pin)
+  and 1.56; re-check the look after upgrading Streamlit. The drag-over highlight on the upload box is
+  Streamlit's own (blue on 1.56); 1.39 has no drag-over styling to customise.
+
 ## Stack
 
 | Component       | Tool                        |
@@ -72,6 +96,7 @@ python -m src.train                # logs to http://localhost:5000
 
 src/          — dataset loader, model, training, Grad-CAM
 api/          — FastAPI backend
-streamlit_app/ — Streamlit frontend
+streamlit_app/ — Streamlit frontend (app, theme, components, metadata helpers)
+.streamlit/   — Streamlit config (light theme, blue primary, telemetry off, 10 MB upload cap)
 tests/        — pytest test suite
 docker/       — Dockerfiles
