@@ -16,6 +16,47 @@ served via FastAPI, with a Streamlit UI and Grad-CAM explainability.
 > which contains GAN-generated images with consistent artifacts. Performance on
 > in-the-wild deepfakes may differ.
 
+## Model Performance & Generalization
+
+### Training data
+- Base: StyleGAN-generated faces (140k Real and Fake Faces, Kaggle)
+- v2 retrain adds: Stable Diffusion 1.5 / 2.1 / XL generated faces (GRAVEX-200k subset;
+  all 9,000 SD fakes, resolution 512/768/1024px — the GRAVEX filenames don't carry an
+  explicit SD-version label, so version is inferred from resolution). 17,600 train /
+  4,400 val / 8,000 test images, balanced real/fake. The "real" half of the added data
+  is GRAVEX's own re-encoded copies of the 140k Faces reals (not new photos, and not the
+  original 140k JPEGs) — matching the SD fakes' encoding pipeline so the model can't just
+  learn "re-encoded = fake" instead of learning the actual generator artifacts. Built via
+  `src/build_gravex_split.py`; manifest at `data/processed_v2/manifest.csv`.
+
+### Known limitation, found and fixed
+The original model (trained only on StyleGAN) was evaluated against Stable Diffusion-generated faces it had never seen:
+
+| Metric | v1 (StyleGAN only) | v2 (StyleGAN + SD) |
+|---|---|---|
+| SD fake recall | 13.1% | 100.0% |
+| SD AUC | 0.27 (worse than random) | 0.9999 (≈1.0) |
+| Original StyleGAN test recall | 99.5% | 99.1% (retained) |
+
+v1 didn't just miss Stable Diffusion fakes — it actively ranked them as *more* authentic than real photos (AUC below 0.5), confirming that a detector trained on one generator family doesn't automatically generalize to another. Retraining on a mixed StyleGAN + Stable Diffusion dataset closed this gap without degrading performance on the original generator family. Evaluated via `src/eval_gravex.py`.
+
+### Scope and honest limitations
+This model is trained to detect **fully AI-generated faces** (GAN and diffusion-based). It is **not** trained on face-swap manipulation (e.g. DeepFakes, FaceSwap on real video frames) and does not reliably detect it — measured as a held-out probe (never trained on) to be transparent about the boundary of what the model can and can't do:
+
+| Source | Fake recall | Real FPR | AUC |
+|---|---|---|---|
+| FaceForensics++ | 95.0% | 96.3% | 0.45 |
+| DFDC | 7.7% | 10.7% | 0.51 |
+| Celeb-DF | 4.7% | 8.0% | 0.49 |
+
+The near-0.5 AUCs are expected — the model was deliberately not trained on face-swap data.
+But "no signal" looks different per source. On DFDC and Celeb-DF it's close to a genuine
+coin flip: both recall and false-positive rate are low. On FaceForensics++ it isn't neutral:
+it flags 95% of manipulated frames *and* 96.3% of real FF++ frames as fake — it reflexively
+calls FF++ content "fake" almost regardless of the true label, which is why the AUC still
+lands near 0.5 despite the high recall. So on FF++, "no signal" means "biased toward fake,"
+not "coin flip" — worth knowing if FF++-style footage is ever run through this model.
+
 ## Architecture
 
 User → Streamlit (port 8501) → FastAPI (port 8000) → EfficientNet-B0 → prediction + Grad-CAM
