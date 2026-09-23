@@ -57,6 +57,18 @@ calls FF++ content "fake" almost regardless of the true label, which is why the 
 lands near 0.5 despite the high recall. So on FF++, "no signal" means "biased toward fake,"
 not "coin flip" — worth knowing if FF++-style footage is ever run through this model.
 
+### Generalization to unseen generator versions
+
+To test whether the model learned a genuine "AI-generated" concept rather than memorizing specific generator fingerprints, a separate model was trained with one Stable Diffusion resolution/version (1024px) deliberately withheld from training, then evaluated exclusively on that held-out version:
+
+| Metric | Held-out 1024px (never seen in training) |
+|---|---|
+| Fake recall | 95.0% |
+| Real FPR | 0.0% |
+| AUC | 0.9997 |
+
+The model correctly identified fakes from a generator version it had never encountered during training, suggesting it learned generalizable artifact patterns rather than overfitting to specific generator fingerprints. This is evaluated separately from the production model (`model.pt`) and is not deployed — it exists purely to measure generalization.
+
 ## Architecture
 
 User → Streamlit (port 8501) → FastAPI (port 8000) → EfficientNet-B0 → prediction + Grad-CAM
