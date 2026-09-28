@@ -1,20 +1,23 @@
 # Deepfake Face Detector
 
-A binary classifier that detects deepfake face images using EfficientNet-B0,
+A binary classifier that detects fully AI-generated faces (StyleGAN and Stable Diffusion) using EfficientNet-B0,
 served via FastAPI, with a Streamlit UI and Grad-CAM explainability.
 
 ## Results
 
 | Metric         | Score  |
 |----------------|--------|
-| Test Accuracy  | 99.05% |
-| Test AUC       | 0.9995 |
-| Fake Recall    | 0.9940 |
-| Fake F1        | 0.9905 |
+| Test Accuracy  | 99.72% |
+| Test AUC       | 0.9999 |
+| Fake Recall    | 0.9975 |
+| Fake F1        | 0.9973 |
+| Real FPR       | 0.30%  |
 
-> Note: Results reflect performance on the 140k Real and Fake Faces Kaggle dataset,
-> which contains GAN-generated images with consistent artifacts. Performance on
-> in-the-wild deepfakes may differ.
+> Note: Results are for the v2 model (`model.pt`) on its held-out test set: 8,000 images
+> (4,000 fake / 4,000 real) drawn from the same sources as training — StyleGAN vs FFHQ
+> (140k Real and Fake Faces) plus Stable Diffusion vs re-encoded FFHQ (GRAVEX-200k).
+> These are in-distribution numbers; see below for unseen generators and face-swap data,
+> where performance differs.
 
 ## Model Performance & Generalization
 
